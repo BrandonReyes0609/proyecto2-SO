@@ -1,4 +1,3 @@
-
 # Proyecto 2 - Simulador de Algoritmos de Planificación y Sincronización
 
 Este proyecto es una aplicación interactiva construida con Streamlit que simula algoritmos de **calendarización** (planificación) y **sincronización** de procesos. Fue desarrollado como parte del curso de Sistemas Operativos.
@@ -60,12 +59,14 @@ streamlit run app.py
 ## 🔧 Funcionalidades
 
 ### A. Simulación de Calendarización
+
 - Algoritmos: FIFO, SJF, Round Robin (con quantum), Priority.
 - Métricas: Tiempo de espera y turnaround.
 - Visualización: Diagrama de Gantt + gráficos de barras.
 - Comparación simultánea de múltiples algoritmos.
 
 ### B. Simulación de Sincronización
+
 - Modos: Mutex y Semáforo.
 - Archivos cargables: procesos, recursos, acciones.
 - Visualización dinámica:
@@ -76,7 +77,7 @@ streamlit run app.py
 ---
 
 ## 📦 Créditos
-Desarrollado por: [Tu Nombre]  
-Curso: Sistemas Operativos  
-Universidad: Universidad del Valle de Guatemala
 
+Desarrollado por: [Tu Nombre]
+Curso: Sistemas Operativos
+Universidad: Universidad del Valle de Guatemala
