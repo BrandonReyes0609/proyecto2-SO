@@ -1,72 +1,88 @@
-"""
-Este es el archivo principal que integra:
-- Carga de procesos desde archivo
-- Simulación FIFO
-- Visualización de resultados
-"""
-
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import copy
 from simulador.cargar_procesos import cargar_procesos_desde_archivo
 from simulador.fifo import simular_fifo
 from simulador.sjf import simular_sjf
 from simulador.rr import simular_rr
 from simulador.priority import simular_priority
-from simulador.metricas import calcular_metricas
-from simulador.gantt import imprimir_gantt
+from simulador.srt import simular_srt  # NUEVO
 
-# Cargar procesos desde archivo
-#procesos = cargar_procesos_desde_archivo("procesos_FIFO.txt")
-procesos = cargar_procesos_desde_archivo("files/procesos.txt")
+st.set_page_config(layout="wide")
+st.title("Simulador de Algoritmos de Planificación y Sincronización")
 
-# Simular el algoritmo FIFO
-print("----Simulación FIFO ----")
-procesos_ejecutados = simular_fifo(procesos)
+tipo_simulacion = st.radio("Selecciona el tipo de simulación", ["Calendarización", "Sincronización"])
 
-# Mostrar resultados
-for proceso in procesos_ejecutados:
-    proceso.mostrar_info()
+if tipo_simulacion == "Calendarización":
+    algoritmos = st.multiselect("Selecciona uno o más algoritmos", ["FIFO", "SJF", "Round Robin", "Priority", "SRT"])
+    usar_rr = "Round Robin" in algoritmos
+    quantum = None
+    if usar_rr:
+        quantum = st.number_input("Ingresa el quantum (solo para Round Robin)", min_value=1, max_value=20, value=4)
 
-# Mostrar diagrama de Gantt
-print("\n📊 Diagrama de Gantt:")
-imprimir_gantt(procesos_ejecutados)
-print("\n")
-# Calcular y mostrar métricas
-calcular_metricas(procesos_ejecutados)
+    col1, col2 = st.columns(2)
+    with col1:
+        ejecutar = st.button("Ejecutar simulación")
+    with col2:
+        limpiar = st.button("Reiniciar")
 
+    if limpiar:
+        st.rerun()
 
-procesos = cargar_procesos_desde_archivo("files/procesos.txt")
-print("----Simulación SJF ----")
-procesos_ejecutados = simular_sjf(procesos)
+    if ejecutar:
+        try:
+            procesos_base = cargar_procesos_desde_archivo("data/procesos.txt")
 
-# Mostrar resultados de SJF
-for proceso in procesos_ejecutados:
-    proceso.mostrar_info()
+            for algoritmo in algoritmos:
+                st.subheader(f"Resultado: {algoritmo}")
+                procesos = copy.deepcopy(procesos_base)
 
-# Mostrar diagrama de Gantt de SJF
-print("\n📊 Diagrama de Gantt:")
-imprimir_gantt(procesos_ejecutados)
+                if algoritmo == "FIFO":
+                    resultado = simular_fifo(procesos)
+                elif algoritmo == "SJF":
+                    resultado = simular_sjf(procesos)
+                elif algoritmo == "Round Robin":
+                    resultado = simular_rr(procesos, quantum)
+                elif algoritmo == "Priority":
+                    resultado = simular_priority(procesos)
+                elif algoritmo == "SRT":
+                    resultado, _ = simular_srt(procesos)
+                else:
+                    st.warning("Algoritmo no reconocido")
+                    continue
 
-# Calcular y mostrar métricas de SJF
-calcular_metricas(procesos_ejecutados)
+                data = [{
+                    "PID": p.pid,
+                    "AT": p.at,
+                    "BT": p.bt,
+                    "Priority": p.priority,
+                    "Start": p.start_time,
+                    "Finish": p.finish_time,
+                    "Waiting": p.waiting_time,
+                    "Turnaround": p.turnaround_time
+                } for p in resultado]
 
+                df = pd.DataFrame(data)
+                st.dataframe(df)
 
-print("----Simulación Round Robin (Quantum = 4) ----")
-procesos = cargar_procesos_desde_archivo("files/procesos.txt")
-procesos_rr = simular_rr(procesos, quantum=4)
+                promedio_espera = df["Waiting"].mean()
+                promedio_turnaround = df["Turnaround"].mean()
 
-for p in procesos_rr:
-    p.mostrar_info()
+                st.success(f"Tiempo promedio de espera: {promedio_espera:.2f}")
+                st.success(f"Tiempo promedio de turnaround: {promedio_turnaround:.2f}")
 
-imprimir_gantt(procesos_rr)
-calcular_metricas(procesos_rr)
+                st.subheader("Diagrama de Gantt")
+                fig, ax = plt.subplots(figsize=(10, 2))
+                tiempo = 0
+                for p in resultado:
+                    ax.barh(0, p.bt, left=p.start_time or tiempo, label=p.pid)
+                    tiempo = (p.start_time or tiempo) + p.bt
+                ax.set_yticks([])
+                ax.set_xlabel("Tiempo")
+                ax.set_title("Gantt")
+                ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.3), ncol=5)
+                st.pyplot(fig)
 
-
-
-print("----Simulación Priority Scheduling ----")
-procesos = cargar_procesos_desde_archivo("files/procesos.txt")
-procesos_priority = simular_priority(procesos)
-
-for p in procesos_priority:
-    p.mostrar_info()
-
-imprimir_gantt(procesos_priority)
-calcular_metricas(procesos_priority)
+        except FileNotFoundError:
+            st.warning("No se encontró el archivo 'procesos.txt'.")

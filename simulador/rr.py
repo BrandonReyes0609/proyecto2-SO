@@ -1,87 +1,68 @@
 """
-Este archivo contiene la función que simula el algoritmo
-de planificación Round Robin (RR).
-
-Round Robin ejecuta los procesos por turnos, cada uno con un tiempo fijo
-llamado quantum. Si un proceso no termina durante su quantum, se pone
-al final de la cola y espera su próximo turno.
-
+Algoritmo de planificación Round Robin (RR).
+Cada proceso recibe un tiempo fijo (quantum) para ejecutar. Si no termina, se reencola.
 Este algoritmo es preventivo.
-
-Requisitos:
-- Los procesos deben estar cargados previamente en una lista.
-- Se debe definir el quantum de ejecución.
 """
+
+from simulador.proceso import Proceso
+import copy
 
 def simular_rr(lista_procesos, quantum):
     """
-    Simula la planificación con Round Robin.
+    Simula Round Robin.
 
     Parámetros:
-    - lista_procesos: lista de objetos de la clase Proceso
-    - quantum: cantidad de tiempo que cada proceso puede ejecutar por turno
+    - lista_procesos: lista de objetos Proceso
+    - quantum: tiempo de ejecución por turno
 
     Retorna:
-    - lista_ordenada: lista de procesos con sus tiempos calculados
-                      (waiting_time, turnaround_time, etc.)
+    - lista_ordenada: procesos con métricas calculadas
+    - ejecucion_por_ciclo: lista de PID por cada ciclo simulado
     """
-
-    # Tiempo actual de la simulación
-    tiempo_actual = 0
-
-    # Procesos que aún no han terminado
-    procesos_restantes = lista_procesos.copy()
-
-    # Procesos listos para ejecutar
+    procesos = copy.deepcopy(lista_procesos)
+    tiempo = 0
     queue = []
+    ejecucion_por_ciclo = []
+    completados = []
+    en_cola = set()
 
-    # Resultado final con procesos completados
-    lista_ordenada = []
+    while len(completados) < len(procesos):
+        # Agregar procesos que han llegado
+        for p in procesos:
+            if p.at <= tiempo and p not in completados and p not in queue and p.remaining_time > 0:
+                queue.append(p)
+                en_cola.add(p)
 
-    # Para rastrear si un proceso ya ha comenzado (para asignar start_time una sola vez)
-    procesos_iniciados = set()
-
-    while len(procesos_restantes) > 0 or len(queue) > 0:
-
-        # Agregamos a la cola los procesos que han llegado
-        for proceso in procesos_restantes:
-            if proceso.at <= tiempo_actual and proceso not in queue:
-                queue.append(proceso)
-
-        # Si no hay nada en la cola, avanzamos el tiempo
-        if len(queue) == 0:
-            tiempo_actual += 1
+        if not queue:
+            ejecucion_por_ciclo.append("IDLE")
+            tiempo += 1
             continue
 
-        # Tomamos el primer proceso de la cola
         actual = queue.pop(0)
+        en_cola.discard(actual)
 
-        # Si es la primera vez que se ejecuta, guardamos su tiempo de inicio
-        if actual.pid not in procesos_iniciados:
-            actual.start_time = tiempo_actual
-            procesos_iniciados.add(actual.pid)
+        if actual.start_time is None:
+            actual.start_time = tiempo
 
-        # Determinamos cuánto tiempo ejecutarlo (quantum o lo que le quede)
-        tiempo_ejecucion = min(quantum, actual.remaining_time)
+        t_ejec = min(quantum, actual.remaining_time)
+        for _ in range(t_ejec):
+            ejecucion_por_ciclo.append(actual.pid)
+            tiempo += 1
 
-        # Simulamos la ejecución
-        tiempo_actual += tiempo_ejecucion
-        actual.remaining_time -= tiempo_ejecucion
+            # Durante este tiempo pueden llegar nuevos procesos
+            for p in procesos:
+                if p.at == tiempo and p not in completados and p not in queue and p.remaining_time > 0:
+                    queue.append(p)
+                    en_cola.add(p)
 
-        # Agregamos nuevos procesos que han llegado durante este quantum
-        for proceso in procesos_restantes:
-            if proceso.at <= tiempo_actual and proceso not in queue and proceso != actual:
-                queue.append(proceso)
+        actual.remaining_time -= t_ejec
 
-        # Si ya terminó, calculamos sus tiempos
         if actual.remaining_time == 0:
-            actual.finish_time = tiempo_actual
+            actual.finish_time = tiempo
             actual.turnaround_time = actual.finish_time - actual.at
             actual.waiting_time = actual.turnaround_time - actual.bt
-            lista_ordenada.append(actual)
-            procesos_restantes.remove(actual)
+            completados.append(actual)
         else:
-            # Si no terminó, lo agregamos al final de la cola
             queue.append(actual)
 
-    return lista_ordenada
+    return procesos, ejecucion_por_ciclo

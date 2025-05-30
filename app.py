@@ -7,6 +7,8 @@ from simulador.fifo import simular_fifo
 from simulador.sjf import simular_sjf
 from simulador.rr import simular_rr
 from simulador.priority import simular_priority
+from simulador.srt import simular_srt
+from simulador.gantt import dibujar_gantt_por_ciclo
 
 st.set_page_config(layout="wide")
 
@@ -15,7 +17,7 @@ st.title("Simulador de Algoritmos de Planificación y Sincronización")
 tipo_simulacion = st.radio("Selecciona el tipo de simulación", ["Calendarización", "Sincronización"])
 
 if tipo_simulacion == "Calendarización":
-    algoritmos = st.multiselect("Selecciona uno o más algoritmos", ["FIFO", "SJF", "Round Robin", "Priority"])
+    algoritmos = st.multiselect("Selecciona uno o más algoritmos", ["FIFO", "SJF", "Round Robin", "Priority","srt"])
     usar_rr = "Round Robin" in algoritmos
     quantum = None
     if usar_rr:
@@ -32,74 +34,82 @@ if tipo_simulacion == "Calendarización":
 
     if ejecutar:
         try:
-            procesos_base = cargar_procesos_desde_archivo("procesos.txt")
+            procesos_base = cargar_procesos_desde_archivo("data/procesos.txt")
 
             for algoritmo in algoritmos:
                 st.subheader(f"Resultado: {algoritmo}")
                 procesos = copy.deepcopy(procesos_base)
 
+                ejecucion_ciclica = []
                 if algoritmo == "FIFO":
                     resultado = simular_fifo(procesos)
+                    for p in resultado:
+                        ejecucion_ciclica += [p.pid] * p.bt
                 elif algoritmo == "SJF":
                     resultado = simular_sjf(procesos)
+                    for p in resultado:
+                        ejecucion_ciclica += [p.pid] * p.bt
                 elif algoritmo == "Round Robin":
-                    resultado = simular_rr(procesos, quantum)
+                    resultado, ejecucion_ciclica = simular_rr(procesos, quantum)
                 elif algoritmo == "Priority":
                     resultado = simular_priority(procesos)
+                    for p in resultado:
+                        ejecucion_ciclica += [p.pid] * p.bt
+                elif algoritmo == "srt":
+                    resultado, ejecucion_ciclica = simular_srt(procesos)
                 else:
                     st.warning("Algoritmo no reconocido")
                     continue
 
                 data = [{
                     "PID": p.pid,
-                    "AT": p.at,
-                    "BT": p.bt,
-                    "Priority": p.priority,
-                    "Start": p.start_time,
-                    "Finish": p.finish_time,
-                    "Waiting": p.waiting_time,
-                    "Turnaround": p.turnaround_time
+                    "AT": f"{p.at:.2f}",
+                    "BT": f"{p.bt:.2f}",
+                    "Priority": f"{p.priority:.2f}",
+                    "Start": f"{p.start_time:.2f}",
+                    "Finish": f"{p.finish_time:.2f}",
+                    "Waiting": f"{p.waiting_time:.2f}",
+                    "Turnaround": f"{p.turnaround_time:.2f}"
                 } for p in resultado]
 
                 df = pd.DataFrame(data)
                 st.dataframe(df)
 
-                promedio_espera = df["Waiting"].mean()
-                promedio_turnaround = df["Turnaround"].mean()
+                promedio_espera = sum([p.waiting_time for p in resultado]) / len(resultado)
+                promedio_turnaround = sum([p.turnaround_time for p in resultado]) / len(resultado)
 
                 st.success(f"Tiempo promedio de espera: {promedio_espera:.2f}")
                 st.success(f"Tiempo promedio de turnaround: {promedio_turnaround:.2f}")
 
                 st.subheader("Diagrama de Gantt")
-                fig, ax = plt.subplots(figsize=(10, 2))
-                tiempo = 0
-                for p in resultado:
-                    ax.barh(0, p.bt, left=tiempo, label=p.pid)
-                    tiempo += p.bt
-                ax.set_yticks([])
-                ax.set_xlabel("Tiempo")
-                ax.set_title("Gantt")
-                ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.3), ncol=5)
-                st.pyplot(fig)
+                if ejecucion_ciclica:
+                    fig = dibujar_gantt_por_ciclo(ejecucion_ciclica, titulo=f"Gantt: {algoritmo}")
+                    st.pyplot(fig)
+                else:
+                    st.info("Este algoritmo no tiene ejecución por ciclo o no fue generado correctamente.")
 
+                #--------------------
                 st.subheader("Tiempo de espera por proceso")
-                fig2, ax2 = plt.subplots()
-                ax2.bar(df["PID"], df["Waiting"], color='skyblue')
+                fig2, ax2 = plt.subplots(figsize=(5, 2.5))
+                ax2.bar([p.pid for p in resultado], [p.waiting_time for p in resultado], color='skyblue')
                 ax2.set_ylabel("Tiempo de espera")
                 ax2.set_xlabel("Proceso")
                 ax2.set_title("Tiempos de espera individuales")
-                st.pyplot(fig2)
+                fig2.tight_layout()
+                st.pyplot(fig2, bbox_inches="tight")
 
                 st.subheader("Tiempo de turnaround por proceso")
-                fig3, ax3 = plt.subplots()
-                ax3.bar(df["PID"], df["Turnaround"], color='lightgreen')
+                fig3, ax3 = plt.subplots(figsize=(5, 2.5))
+                ax3.bar([p.pid for p in resultado], [p.turnaround_time for p in resultado], color='lightgreen')
                 ax3.set_ylabel("Turnaround time")
                 ax3.set_xlabel("Proceso")
                 ax3.set_title("Tiempos de turnaround individuales")
-                st.pyplot(fig3)
+                fig3.tight_layout()
+                st.pyplot(fig3, bbox_inches="tight")
 
         except FileNotFoundError:
             st.warning("No se encontró el archivo 'procesos.txt' en el directorio actual.")
+
 
 else:
     st.subheader("Modo de sincronización")
@@ -182,15 +192,90 @@ else:
                 if acciones:
                     st.write(f"Ciclo {ciclo}:", " → ".join(acciones))
 
-            # Visualización tipo Gantt con scroll horizontal
-            st.subheader("Visualización por proceso y ciclo")
+            # Visualización por proceso con color
+            st.subheader("Visualización por proceso y ciclo (dinámica)")
             if gantt_data:
                 ciclos = list(range(max_ciclo))
-                gantt_df = pd.DataFrame(index=gantt_data.keys(), columns=[f"C{c}" for c in ciclos])
-                for pid, acciones in gantt_data.items():
-                    for ciclo in acciones:
-                        gantt_df.loc[pid, f"C{ciclo}"] = acciones[ciclo]
-                gantt_df.fillna("", inplace=True)
-                st.dataframe(gantt_df, use_container_width=True)
+                colores = {"✔": "#00CC44", "⌛": "#FFA500", "": "#FFFFFF"}
+                tabla = """<style>
+                table {border-collapse: collapse; width: 100%; font-size: 11px;}
+                th, td {border: 1px solid #ddd; text-align: center; padding: 4px;}
+                .green {background-color: #00CC44; color: white;}
+                .orange {background-color: #FFA500; color: black;}
+                </style><table><thead><tr><th>PID</th>"""
+                tabla += "".join([f"<th>C{c}</th>" for c in ciclos]) + "</tr></thead><tbody>"
+                for pid in gantt_data:
+                    tabla += f"<tr><td><b>{pid}</b></td>"
+                    for c in ciclos:
+                        estado = gantt_data[pid].get(c, "")
+                        color_class = "green" if estado == "✔" else "orange" if estado == "⌛" else ""
+                        tabla += f"<td class='{color_class}'>{estado}</td>"
+                    tabla += "</tr>"
+                tabla += "</tbody></table>"
+                st.markdown(tabla, unsafe_allow_html=True)
+
+            ##--------------------
+            st.subheader("Estado dinámico por proceso")
+            if gantt_data:
+                estado_por_ciclo = {}
+                for ciclo in range(max_ciclo):
+                    activos = [pid for pid in gantt_data if gantt_data[pid].get(ciclo) == "✔"]
+                    estado_por_ciclo[ciclo] = activos
+
+                bloques = []
+                for pid in gantt_data:
+                    bloques.append(f"<div style='margin: 4px 0;'><b>{pid}</b> → ")
+                    for c in range(max_ciclo):
+                        estado = gantt_data[pid].get(c, "")
+                        color = "#00CC44" if estado == "✔" else "#FFA500" if estado == "⌛" else "#CCCCCC"
+                        bloques[-1] += f"<span style='display:inline-block; width:10px; height:10px; margin:0 1px; background:{color}; border-radius:2px;' title='C{c}: {estado}'></span>"
+                    bloques[-1] += "</div>"
+
+                st.markdown("".join(bloques), unsafe_allow_html=True)
+
+            ##--------------------
+            st.subheader("Estado dinámico animado (3 procesos)")
+            if gantt_data:
+                import streamlit.components.v1 as components
+                max_ciclo = max([max(v.keys()) if v else 0 for v in gantt_data.values()]) + 1
+                procesos = list(gantt_data.keys())[:3]
+
+                html_anim = """
+                <style>
+                .cuadro { width: 100px; height: 100px; display: inline-block; margin: 5px; border-radius: 10px; }
+                .etiqueta { text-align: center; margin-top: 5px; font-weight: bold; }
+                </style>
+                <div id='contenedor'>
+                """
+
+                for pid in procesos:
+                    html_anim += f"<div class='etiqueta'>{pid}</div>"
+                    html_anim += f"<div id='cuadro_{pid}' class='cuadro' style='background:#CCC;'></div>"
+
+                html_anim += "</div><script>\nconst maxCiclo = %d;\nlet ciclo = 0;\nconst interval = 500;\n" % max_ciclo
+
+                for pid in procesos:
+                    estados_pid = []
+                    for c in range(max_ciclo):
+                        estado = gantt_data[pid].get(c, "")
+                        if estado == "✔":
+                            color = "#00CC44"
+                        elif estado == "⌛":
+                            color = "#FFA500"
+                        else:
+                            color = "#CCCCCC"
+                        estados_pid.append(f'\"{color}\"')
+                    html_anim += f"const {pid} = [{','.join(estados_pid)}];\n"
+
+                html_anim += """
+                function actualizar() {
+                    ciclo = (ciclo + 1) % maxCiclo;
+                """
+                html_anim += "\n".join([f"document.getElementById('cuadro_{pid}').style.background = {pid}[ciclo];" for pid in procesos])
+                html_anim += "\n}\nsetInterval(actualizar, interval);\nactualizar();\n</script>"
+
+                components.html(html_anim, height=250)
+            
+            
         else:
             st.warning("Debes cargar los tres archivos para continuar.")
