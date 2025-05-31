@@ -9,7 +9,9 @@ from simulador.rr import simular_rr
 from simulador.priority import simular_priority
 from simulador.srt import simular_srt
 from simulador.gantt import dibujar_gantt_por_ciclo
-from simulador.sincronizacion import simular_sincronizacion
+#from simulador.sincronizacion import simular_sincronizacion
+from simulador.sincronizacion_mutex import simular_mutex
+from simulador.sincronizacion_semaforo import simular_semaforo
 
 st.set_page_config(layout="wide")
 
@@ -126,7 +128,12 @@ else:
             recursos_txt = archivo_recursos.read().decode("utf-8").splitlines()
             acciones_txt = archivo_acciones.read().decode("utf-8").splitlines()
 
-            timeline, gantt_data, max_ciclo = simular_sincronizacion(procesos_txt, recursos_txt, acciones_txt)
+            #timeline, gantt_data, max_ciclo = simular_sincronizacion(procesos_txt, recursos_txt, acciones_txt)
+
+            if modo_sync == "Mutex":
+                timeline, gantt_data, max_ciclo = simular_mutex(procesos_txt, recursos_txt, acciones_txt)
+            else:
+                timeline, gantt_data, max_ciclo = simular_semaforo(procesos_txt, recursos_txt, acciones_txt)
 
             st.subheader("Línea de tiempo de ejecución (ACCESSED / WAITING)")
             for ciclo, acciones in timeline:
@@ -136,7 +143,7 @@ else:
             st.subheader("Visualización por proceso y ciclo (dinámica)")
             if gantt_data:
                 ciclos = list(range(max_ciclo))
-                colores = {"✔": "#00CC44", "⌛": "#FFA500", "": "#FFFFFF"}
+                colores = {"✔": "#00CC44", "⌛": "#24702D", "": "#FFFFFF"}
                 tabla = """<style>
                 table {border-collapse: collapse; width: 100%; font-size: 11px;}
                 th, td {border: 1px solid #ddd; text-align: center; padding: 4px;}
